@@ -5,6 +5,8 @@ import anyio
 import httpx2
 from asgiref.sync import async_to_sync
 from django.core.asgi import get_asgi_application
+from django.core.signals import request_finished, request_started
+from django.db import close_old_connections
 from django.test import TestCase
 from django.urls import reverse
 from mcp import Client
@@ -161,6 +163,13 @@ class TestMCPClient(TestCase):
     def setUp(self):
         self.home_page = HomePageFactory()
         self.page = ContentPageFactory(parent=self.home_page, title="Streamfield")
+
+        # Like Django's test client, keep the request handler from closing
+        # the test's database connection, which it does for connections in a
+        # transaction, such as the test's own.
+        for signal in (request_started, request_finished):
+            signal.disconnect(close_old_connections)
+            self.addCleanup(signal.connect, close_old_connections)
 
     def run_client(self, mode="auto", **calls):
         async def run():
